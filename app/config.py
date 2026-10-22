@@ -21,6 +21,7 @@ class Conversion:
 @dataclass(frozen=True)
 class Config:
     rules: tuple  # (include, pattern, dir_only)
+    rule_lines: tuple  # rules as written, for logging
     conversions: dict  # input extension -> Conversion
     priority: tuple  # input extensions in config order, tie-break between same-quality sources
 
@@ -50,7 +51,7 @@ def load(path):
         raise ConfigError(f"cannot read {path}: {e}")
 
     flt = data.get("filter", {})
-    lines = list(flt.get("rules", []))
+    lines = [line.strip() for line in flt.get("rules", [])]
     if flt.get("file"):
         if not os.path.isfile(flt["file"]):
             raise ConfigError(f"filter file not found: {flt['file']}")
@@ -74,4 +75,4 @@ def load(path):
                 raise ConfigError(f"input {e} is mapped twice")
             conversions[e] = conv
             priority.append(e)
-    return Config(rules, conversions, tuple(priority))
+    return Config(rules, tuple(lines), conversions, tuple(priority))

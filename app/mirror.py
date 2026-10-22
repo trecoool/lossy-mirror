@@ -191,7 +191,7 @@ def run(src, dst, cfg, only="", dry_run=False, jobs=1, max_delete_ratio=0.1):
 
 def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
     start = time.time()
-    log.info("Filter: " + " | ".join(f"{'+' if inc else '-'} {pat}{'/' if d else ''}" for inc, pat, d in cfg.rules))
+    log.info("Filter: " + " | ".join(cfg.rule_lines))
     for out in sorted({c.output for c in cfg.conversions.values()}):
         log.info(f"Convert: {', '.join(e for e in cfg.priority if cfg.conversions[e].output == out)} -> {out}")
     plan_jobs, collisions = plan(src, cfg, only)
