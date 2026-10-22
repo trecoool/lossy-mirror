@@ -220,15 +220,18 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
 
     counts = {"convert": 0, "copy": 0, "error": 0}
     replaced, kept = set(), set()
+    report = []  # anything needing attention, repeated at the end of the log
     total = len(plan_jobs)
     results = pool.map(run_job, plan_jobs.items())  # yields in plan order: log stays sorted
     for i, (rel, (action, siblings, error)) in enumerate(zip(plan_jobs, results), 1):
         if error:
             counts["error"] += 1
             log.error(f"[{i}/{total}] ERROR {rel}: {error}")
+            report.append(f"ERROR {rel}: {error}")
             for old in siblings:  # a failed track keeps its previous version in the mirror
                 kept.add(old)
                 log.warning(f"[{i}/{total}] KEEP {old}")
+                report.append(f"KEEP {old} (previous version of the failed track)")
             continue
         if not action:
             continue
@@ -247,6 +250,7 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
         for rel in orphans if dry_run else orphans[:20]:
             log.error(f"  orphan: {rel}")
         counts["error"] += 1
+        report.append(f"ORPHANS NOT REMOVED: {len(orphans)}/{total_dst}, above max delete ratio (listed above)")
     else:
         for rel in orphans:
             log.info(f"DELETE {rel}")
@@ -256,6 +260,12 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
         if not dry_run:
             remove_empty_dirs(dst, only)
 
+    if collisions:
+        report.append(f"{len(collisions)} collisions: same-name audio in a folder, only the best is mirrored "
+                      f"(COLLISION lines above)")
+    log.info("Report:" if report else "Report: nothing to report")
+    for line in report:
+        log.info(f"  {line}")
     elapsed = time.strftime("%H:%M:%S", time.gmtime(time.time() - start))
     log.info(f"Done in {elapsed}: {counts['convert']} converted, {counts['copy']} copied, {len(replaced)} replaced, "
              f"{len(orphans)} orphans, {len(collisions)} collisions, {counts['error']} errors")
