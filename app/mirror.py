@@ -25,11 +25,11 @@ log = logging.getLogger("lossy-mirror")
 
 
 def included(rules, name, is_dir):
-    """rsync filter semantics on basenames: first match wins, no match = include."""
+    """rsync filter semantics on basenames, case-insensitive: first match wins, no match = include."""
     for include, pattern, dir_only in rules:
         if dir_only and not is_dir:
             continue
-        if fnmatch.fnmatchcase(name, pattern):
+        if fnmatch.fnmatchcase(name.casefold(), pattern):
             return include
     return True
 
@@ -191,6 +191,9 @@ def run(src, dst, cfg, only="", dry_run=False, jobs=1, max_delete_ratio=0.1):
 
 def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
     start = time.time()
+    log.info("Filter: " + " | ".join(f"{'+' if inc else '-'} {pat}{'/' if d else ''}" for inc, pat, d in cfg.rules))
+    for out in sorted({c.output for c in cfg.conversions.values()}):
+        log.info(f"Convert: {', '.join(e for e in cfg.priority if cfg.conversions[e].output == out)} -> {out}")
     plan_jobs, collisions = plan(src, cfg, only)
     if not plan_jobs:
         log.error(f"ERROR: nothing found under {os.path.join(src, only)}, aborting")

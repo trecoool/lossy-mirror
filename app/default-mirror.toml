@@ -1,7 +1,7 @@
 # Copied to /config/mirror.toml on first start. Changes apply from the next pass.
 
 # rsync-style rules on file and folder names: "+ pattern" includes, "- pattern" excludes.
-# First match wins, no match = included. A trailing "/" limits the rule to folders.
+# Case-insensitive. First match wins, no match = included. A trailing "/" limits the rule to folders.
 # Files no longer included are removed from the mirror.
 [filter]
 rules = [

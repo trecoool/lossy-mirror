@@ -29,7 +29,7 @@ def parse_rule(line):
     sign, _, pattern = line.strip().partition(" ")
     if sign not in ("+", "-") or not pattern:
         raise ConfigError(f"bad filter rule '{line.strip()}': expected '+ pattern' or '- pattern'")
-    return sign == "+", pattern.rstrip("/"), pattern.endswith("/")
+    return sign == "+", pattern.rstrip("/").casefold(), pattern.endswith("/")
 
 
 def read_rule_file(path):

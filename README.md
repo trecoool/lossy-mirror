@@ -59,7 +59,7 @@ command = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", "{input}",
            "-c:a", "libvorbis", "-q:a", "4.1", "{resample}", "-f", "ogg", "{output}"]
 ```
 
-Filter rules: rsync-style, matched against file and folder names (not paths). First match wins, no match = included. A trailing `/` limits the rule to folders.
+Filter rules: rsync-style, matched against file and folder names (not paths), case-insensitive (unlike rsync). First match wins, no match = included. A trailing `/` limits the rule to folders.
 
 Changing the conversion command does not redo existing targets (their mtime still matches). To force it, delete the affected part of the mirror.
 
@@ -80,7 +80,7 @@ Changing the conversion command does not redo existing targets (their mtime stil
 
 Mounts: `/src` (read-only), `/dst`, `/config`.
 
-Logs: stdout, plus `/config/logs/<timestamp>_OK.log` / `_ERRORED.log` / `_PLAN.log` for passes that changed something, failed, or were dry runs.
+Each pass starts by logging the active filter rules and conversions. Logs: stdout, plus `/config/logs/<timestamp>_OK.log` / `_ERRORED.log` / `_PLAN.log` for passes that changed something, failed, or were dry runs.
 
 ## Unraid
 
