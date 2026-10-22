@@ -233,11 +233,10 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
                 log.warning(f"[{i}/{total}] KEEP {old}")
                 report.append(f"KEEP {old} (previous version of the failed track)")
             continue
-        if not action:
-            continue
-        counts[action] += 1
-        log.info(f"[{i}/{total}] {action.upper()} {rel}")
-        for old in siblings:
+        if action:
+            counts[action] += 1
+            log.info(f"[{i}/{total}] {action.upper()} {rel}")
+        for old in siblings:  # also removed when the target was already up to date (finishes an earlier replace)
             replaced.add(old)
             log.info(f"[{i}/{total}] REPLACE {old}")
 
@@ -260,6 +259,9 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
         if not dry_run:
             remove_empty_dirs(dst, only)
 
+    if replaced:
+        report.append(f"{len(replaced)} replaced: same-name audio removed in favour of the track's current target "
+                      f"(REPLACE lines above)")
     if collisions:
         report.append(f"{len(collisions)} collisions: same-name audio in a folder, only the best is mirrored "
                       f"(COLLISION lines above)")

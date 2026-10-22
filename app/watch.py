@@ -26,9 +26,12 @@ def env(name, default):
 
 
 def prepare_config_dir():
-    """Creates logs and default config owned by PUID:PGID (appdata folders are created by root)."""
+    """Creates logs and default config owned by PUID:PGID (appdata folders are created by root); marks killed passes."""
     uid, gid = int(env("PUID", "99")), int(env("PGID", "100"))
     os.makedirs(LOG_DIR, exist_ok=True)
+    for name in os.listdir(LOG_DIR):
+        if name.endswith("_mirror.log"):  # pass killed before it could name its log
+            os.replace(os.path.join(LOG_DIR, name), os.path.join(LOG_DIR, name.replace("_mirror.log", "_INTERRUPTED.log")))
     if not os.path.exists(CONFIG_FILE):
         shutil.copyfile(DEFAULT_CONFIG, CONFIG_FILE)
         log.info(f"Wrote default config to {CONFIG_FILE}")

@@ -80,7 +80,7 @@ Changing the conversion command does not redo existing targets (their mtime stil
 
 Mounts: `/src` (read-only), `/dst`, `/config`.
 
-Each pass starts by logging the active filter rules and conversions, and ends with a report of what needs attention (errors, kept files, skipped deletions, collisions). Logs: stdout, plus `/config/logs/<timestamp>_OK.log` / `_ERRORED.log` / `_PLAN.log` for passes that changed something, failed, or were dry runs.
+Each pass starts by logging the active filter rules and conversions, and ends with a report of what needs attention (errors, kept files, skipped deletions, replacements, collisions). Logs: stdout, plus `/config/logs/<timestamp>_OK.log` / `_ERRORED.log` / `_PLAN.log` for passes that changed something, failed, or were dry runs. A pass killed midway leaves `_INTERRUPTED.log`.
 
 ## Unraid
 
