@@ -203,28 +203,32 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
         log.warning(f"COLLISION {winner} wins over {', '.join(losers)}")
 
     def run_job(item):
-        """Returns (action, replaced siblings, error) for one destination file."""
+        """Returns (action, siblings, error) for one destination file: siblings replaced, or kept on error."""
         rel, (src_file, conv) = item
         dst_file = os.path.join(dst, rel)
+        siblings = []
         try:
+            if audio.is_audio(os.path.splitext(rel)[1]):
+                siblings = shadowed(dst_file, dst, plan_jobs)
             if not dry_run:
                 os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-            is_audio = audio.is_audio(os.path.splitext(rel)[1])
-            siblings = shadowed(dst_file, dst, plan_jobs) if is_audio else []
             if conv:
                 return sync_convert(src_file, dst_file, conv, dry_run, dst, siblings), siblings, None
             return sync_copy(src_file, dst_file, dry_run, dst, siblings), siblings, None
         except Exception as e:
-            return None, [], e
+            return None, siblings, e
 
     counts = {"convert": 0, "copy": 0, "error": 0}
-    replaced = set()
+    replaced, kept = set(), set()
     total = len(plan_jobs)
     results = pool.map(run_job, plan_jobs.items())  # yields in plan order: log stays sorted
     for i, (rel, (action, siblings, error)) in enumerate(zip(plan_jobs, results), 1):
         if error:
             counts["error"] += 1
             log.error(f"[{i}/{total}] ERROR {rel}: {error}")
+            for old in siblings:  # a failed track keeps its previous version in the mirror
+                kept.add(old)
+                log.warning(f"[{i}/{total}] KEEP {old}")
             continue
         if not action:
             continue
@@ -234,7 +238,7 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
             replaced.add(old)
             log.info(f"[{i}/{total}] REPLACE {old}")
 
-    orphans = [o for o in find_orphans(dst, only, set(plan_jobs)) if o not in replaced]
+    orphans = [o for o in find_orphans(dst, only, set(plan_jobs)) if o not in replaced and o not in kept]
     total_dst = total + len(orphans)
     deleted = 0
     if orphans and len(orphans) > max(20, max_delete_ratio * total_dst):
