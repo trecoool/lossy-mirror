@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>lossy-mirror</Name>
+  <Repository>ghcr.io/trecoool/lossy-mirror:latest</Repository>
+  <Registry>https://github.com/trecoool/lossy-mirror/pkgs/container/lossy-mirror</Registry>
+  <Network>none</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/trecoool/lossy-mirror/issues</Support>
+  <Project>https://github.com/trecoool/lossy-mirror</Project>
+  <Overview>Mirrors a music library, converting lossless audio (flac, wav, ape) to a compact format such as ogg vorbis. Everything else is copied, deletions follow the source, tags are preserved. Watches the source and sweeps periodically. Configured in /config/mirror.toml.</Overview>
+  <Category>MediaApp:Music Tools:</Category>
+  <WebUI/>
+  <ExtraParams/>
+  <PostArgs/>
+  <Config Name="Source library" Target="/src" Default="/mnt/user/media/music" Mode="ro" Description="Lossless library (read-only)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/music</Config>
+  <Config Name="Mirror" Target="/dst" Default="" Mode="rw" Description="Lossy mirror. Fully managed: files not derived from the source are deleted." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media_cacheonly/music</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/lossy-mirror" Mode="rw" Description="mirror.toml (filter + conversions, default written on first start) and logs" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/lossy-mirror</Config>
+  <Config Name="Armed" Target="ARMED" Default="0" Mode="" Description="0 = plan only: one dry-run pass logged to /config/logs, nothing written. 1 = mirror." Type="Variable" Display="always" Required="true" Mask="false">0</Config>
+  <Config Name="Parallel jobs" Target="JOBS" Default="2" Mode="" Description="Files processed in parallel, one ffmpeg each" Type="Variable" Display="advanced" Required="true" Mask="false">2</Config>
+  <Config Name="Debounce seconds" Target="DEBOUNCE_SECONDS" Default="60" Mode="" Description="Quiet time after the last source change before a pass starts" Type="Variable" Display="advanced" Required="true" Mask="false">60</Config>
+  <Config Name="Sweep hours" Target="SWEEP_HOURS" Default="12" Mode="" Description="Full pass interval, catches changes inotify missed" Type="Variable" Display="advanced" Required="true" Mask="false">12</Config>
+  <Config Name="Max delete ratio" Target="MAX_DELETE_RATIO" Default="0.1" Mode="" Description="Skip orphan removal if it would delete more than this share of the mirror" Type="Variable" Display="advanced" Required="true" Mask="false">0.1</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Owner of written files" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group of written files" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+</Container>

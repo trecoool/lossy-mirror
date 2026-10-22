@@ -1,0 +1,26 @@
+# Copied to /config/mirror.toml on first start. Changes apply from the next pass.
+
+# rsync-style rules on file and folder names: "+ pattern" includes, "- pattern" excludes.
+# First match wins, no match = included. A trailing "/" limits the rule to folders.
+# Files no longer included are removed from the mirror.
+[filter]
+rules = [
+    "- .*/",
+]
+# file = "/src/.mirrorfilter"   # more rules from a file, applied after the ones above
+
+# Audio inputs converted to one output format (ogg, opus or flac). Other included files are copied as-is.
+# Same-name audio files in a folder compete for one target: lossless beats lossy, then higher
+# sample rate x bit depth (lossless) or bitrate (lossy), then the order of `inputs`.
+# The converter only produces audio: tags are copied from the source by the app, pictures excluded.
+# {resample} becomes "-ar <rate>" when the source rate exceeds max_sample_rate, otherwise nothing.
+[[convert]]
+inputs = ["flac", "wav", "aiff", "ape", "wv"]
+output = "ogg"
+max_sample_rate = 48000
+command = [
+    "ffmpeg", "-nostdin", "-v", "error", "-y", "-i", "{input}",
+    "-map", "0:a:0", "-map_metadata", "-1", "-threads", "1",
+    "-c:a", "libvorbis", "-q:a", "4.1", "{resample}",
+    "-f", "ogg", "{output}",
+]
