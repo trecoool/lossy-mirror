@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 import audio
@@ -183,13 +184,24 @@ def run(src, dst, cfg, only="", dry_run=False, jobs=1, max_delete_ratio=0.1):
 
     signal.signal(signal.SIGTERM, on_term)
     try:
-        return _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio)
+        return _run(pool, jobs * 4, src, dst, cfg, only, dry_run, max_delete_ratio)
     finally:
         signal.signal(signal.SIGTERM, previous_term)
         pool.shutdown()
 
 
-def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
+def ordered_map(pool, fn, items, window):
+    """pool.map with at most `window` jobs submitted at once (map submits every item upfront)."""
+    pending = deque()
+    for item in items:
+        pending.append(pool.submit(fn, item))
+        if len(pending) >= window:
+            yield pending.popleft().result()
+    while pending:
+        yield pending.popleft().result()
+
+
+def _run(pool, window, src, dst, cfg, only, dry_run, max_delete_ratio):
     start = time.time()
     log.info("Filter: " + " | ".join(cfg.rule_lines))
     for out in sorted({c.output for c in cfg.conversions.values()}):
@@ -222,7 +234,7 @@ def _run(pool, src, dst, cfg, only, dry_run, max_delete_ratio):
     replaced, kept = set(), set()
     report = []  # anything needing attention, repeated at the end of the log
     total = len(plan_jobs)
-    results = pool.map(run_job, plan_jobs.items())  # yields in plan order: log stays sorted
+    results = ordered_map(pool, run_job, plan_jobs.items(), window)  # yields in plan order: log stays sorted
     for i, (rel, (action, siblings, error)) in enumerate(zip(plan_jobs, results), 1):
         if error:
             counts["error"] += 1
