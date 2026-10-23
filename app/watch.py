@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # Container entrypoint: runs mirror passes on source changes (inotify + debounce) and on a sweep timer.
+# Each pass runs in a forked child, so the idle process stays small whatever the library size.
 # ARMED=0 runs one dry-run pass (the plan) and idles. MODE=once runs a single pass and exits with its status.
 
 import logging
+import multiprocessing
 import os
 import shutil
 import signal
@@ -55,6 +57,41 @@ def rotate_logs(keep):
         os.remove(os.path.join(LOG_DIR, name))
 
 
+def pass_body(dry_run, send):
+    """Runs in the forked child; sends (exit code, files changed) back to the parent."""
+    try:
+        cfg = config.load(CONFIG_FILE)  # reloaded every pass: edits apply without a restart
+        result = mirror.run("/src", "/dst", cfg, dry_run=dry_run, jobs=int(env("JOBS", "2")),
+                            max_delete_ratio=float(env("MAX_DELETE_RATIO", "0.1")))
+    except config.ConfigError as e:
+        log.error(f"ERROR: config: {e}")
+        result = 1, 0
+    except Exception as e:
+        log.error(f"ERROR: pass crashed: {type(e).__name__}: {e}")
+        result = 1, 0
+    send.send(result)
+
+
+def isolated_pass(dry_run):
+    """Pass in a forked child so its peak memory returns to the OS when it exits.
+    Daemon: on container stop, multiprocessing's exit hook SIGTERMs it and waits for in-flight files."""
+    ctx = multiprocessing.get_context("fork")
+    recv, send = ctx.Pipe(duplex=False)
+    child = ctx.Process(target=pass_body, args=(dry_run, send), daemon=True)
+    child.start()
+    send.close()
+    try:
+        result = recv.recv()
+    except EOFError:  # child died without reporting (killed, OOM)
+        result = None
+    recv.close()
+    child.join()
+    if result is None:
+        log.error(f"ERROR: pass process died with exit code {child.exitcode}")
+        return 1, 0
+    return result
+
+
 def mirror_pass(reason, dry_run):
     """One pass with its own log file; the file is kept only if the pass changed something or failed."""
     stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -64,15 +101,7 @@ def mirror_pass(reason, dry_run):
     log.addHandler(handler)
     log.info(f"Pass started ({reason}{', dry run' if dry_run else ''})")
     try:
-        cfg = config.load(CONFIG_FILE)  # reloaded every pass: edits apply without a restart
-        code, changed = mirror.run("/src", "/dst", cfg, dry_run=dry_run, jobs=int(env("JOBS", "2")),
-                                   max_delete_ratio=float(env("MAX_DELETE_RATIO", "0.1")))
-    except config.ConfigError as e:
-        log.error(f"ERROR: config: {e}")
-        code, changed = 1, 0
-    except Exception as e:
-        log.error(f"ERROR: pass crashed: {type(e).__name__}: {e}")
-        code, changed = 1, 0
+        code, changed = isolated_pass(dry_run)
     finally:
         log.removeHandler(handler)
         handler.close()
