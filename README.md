@@ -16,7 +16,7 @@ Runs as a container: watches the source with inotify, starts a pass once activit
 | new or changed source file | converted or copied, target gets the source mtime |
 | target mtime = source mtime | skipped |
 | source deleted or no longer included | target deleted at the end of the pass |
-| track's target changes format (e.g. mp3 replaced by flac, or output switched from ogg to opus) | old target deleted right after the new one lands, so servers like Navidrome see a move and keep play history |
+| track's target changes format (e.g. mp3 replaced by flac, or output switched from ogg to opus) | old target deleted just before the new one lands, so servers like Navidrome see a move and keep play history |
 | source tags cannot be read with certainty | file refused with an error, nothing written; the track's previous version in the mirror (e.g. from a same-name mp3) is kept |
 
 Writes are atomic: conversions are built in a local temp file, copied next to the target as `.tmp`, then renamed. More than 10% of the mirror to delete at once → deletion is skipped and reported.

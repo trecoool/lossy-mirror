@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # One-way mirror: mapped audio formats are converted, everything else the filter allows is copied as-is.
 # One target per source track: same-name audio files compete, the best one wins, older targets are replaced.
-# Up to date = target mtime equals source mtime (plus size for copies). Writes are atomic renames,
-# conversions are built in a local temp file first. Orphans are removed last, behind a ratio guard.
+# Up to date = target mtime equals source mtime (plus size for copies). Writes are atomic renames of a fully built file.
+# Old files always go before new ones appear (orphans first, behind a ratio guard): Navidrome then sees moves.
 
 import argparse
 import fnmatch
@@ -67,9 +67,11 @@ def same_mtime(a, b):
     return int(os.stat(a).st_mtime) == int(os.stat(b).st_mtime)
 
 
-def finish(src_file, tmp, dst_file):
+def finish(src_file, tmp, dst_file, dst, siblings):
+    """Lands a fully built file; replaced siblings are removed just before, so Navidrome sees a move."""
     st = os.stat(src_file)
     os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+    remove_all(dst, siblings)
     os.replace(tmp, dst_file)
 
 
@@ -129,8 +131,7 @@ def sync_convert(src_file, dst_file, conv, dry_run, dst, siblings):
         subprocess.run(build_command(conv, src_file, work), check=True)
         audio.write_tags(work, tags)
         shutil.copyfile(work, tmp)
-        finish(src_file, tmp, dst_file)
-        remove_all(dst, siblings)  # same watcher batch as the rename: Navidrome sees a move, keeps history
+        finish(src_file, tmp, dst_file, dst, siblings)
     finally:
         for path in (work, tmp):
             discard(path)
@@ -149,8 +150,7 @@ def sync_copy(src_file, dst_file, dry_run, dst, siblings):
     tmp = dst_file + TMP_SUFFIX
     try:
         shutil.copyfile(src_file, tmp)
-        finish(src_file, tmp, dst_file)
-        remove_all(dst, siblings)
+        finish(src_file, tmp, dst_file, dst, siblings)
     finally:
         discard(tmp)
     return "copy"
@@ -164,6 +164,13 @@ def find_orphans(dst, only, expected):
             if rel not in expected:
                 orphans.append(rel)
     return sorted(orphans)
+
+
+def replaced_later(rel, stems):
+    """True for old audio that a planned track replaces under the same name: removed by its job, kept if it fails."""
+    folder, name = os.path.split(rel)
+    stem, ext = os.path.splitext(name)
+    return audio.is_audio(ext) and (folder, stem.casefold()) in stems
 
 
 def remove_empty_dirs(dst, only):
@@ -214,6 +221,27 @@ def _run(pool, window, src, dst, cfg, only, dry_run, max_delete_ratio):
     for winner, losers in collisions:
         log.warning(f"COLLISION {winner} wins over {', '.join(losers)}")
 
+    counts = {"convert": 0, "copy": 0, "error": 0}
+    report = []  # anything needing attention, repeated at the end of the log
+    stems = {(os.path.dirname(r), os.path.splitext(os.path.basename(r))[0].casefold())
+             for r in plan_jobs if audio.is_audio(os.path.splitext(r)[1])}
+    orphans = [o for o in find_orphans(dst, only, set(plan_jobs)) if not replaced_later(o, stems)]
+    total_dst = len(plan_jobs) + len(orphans)
+    deleted = 0
+    if orphans and len(orphans) > max(20, max_delete_ratio * total_dst):
+        log.error(f"WARNING: {len(orphans)}/{total_dst} destination files are orphans, skipping removal "
+                  f"(raise max delete ratio if intended)")
+        for rel in orphans if dry_run else orphans[:20]:
+            log.error(f"  orphan: {rel}")
+        counts["error"] += 1
+        report.append(f"ORPHANS NOT REMOVED: {len(orphans)}/{total_dst}, above max delete ratio (listed above)")
+    else:
+        for rel in orphans:  # before any new file appears: Navidrome sees renamed tracks as moves
+            log.info(f"DELETE {rel}")
+            if not dry_run:
+                os.remove(os.path.join(dst, rel))
+        deleted = len(orphans)
+
     def run_job(item):
         """Returns (action, siblings, error) for one destination file: siblings replaced, or kept on error."""
         rel, (src_file, conv) = item
@@ -230,9 +258,7 @@ def _run(pool, window, src, dst, cfg, only, dry_run, max_delete_ratio):
         except Exception as e:
             return None, siblings, e
 
-    counts = {"convert": 0, "copy": 0, "error": 0}
     replaced, kept = set(), set()
-    report = []  # anything needing attention, repeated at the end of the log
     total = len(plan_jobs)
     results = ordered_map(pool, run_job, plan_jobs.items(), window)  # yields in plan order: log stays sorted
     for i, (rel, (action, siblings, error)) in enumerate(zip(plan_jobs, results), 1):
@@ -252,24 +278,8 @@ def _run(pool, window, src, dst, cfg, only, dry_run, max_delete_ratio):
             replaced.add(old)
             log.info(f"[{i}/{total}] REPLACE {old}")
 
-    orphans = [o for o in find_orphans(dst, only, set(plan_jobs)) if o not in replaced and o not in kept]
-    total_dst = total + len(orphans)
-    deleted = 0
-    if orphans and len(orphans) > max(20, max_delete_ratio * total_dst):
-        log.error(f"WARNING: {len(orphans)}/{total_dst} destination files are orphans, skipping removal "
-                  f"(raise max delete ratio if intended)")
-        for rel in orphans if dry_run else orphans[:20]:
-            log.error(f"  orphan: {rel}")
-        counts["error"] += 1
-        report.append(f"ORPHANS NOT REMOVED: {len(orphans)}/{total_dst}, above max delete ratio (listed above)")
-    else:
-        for rel in orphans:
-            log.info(f"DELETE {rel}")
-            if not dry_run:
-                os.remove(os.path.join(dst, rel))
-        deleted = len(orphans)
-        if not dry_run:
-            remove_empty_dirs(dst, only)
+    if not dry_run:
+        remove_empty_dirs(dst, only)
 
     if replaced:
         report.append(f"{len(replaced)} replaced: same-name audio removed in favour of the track's current target "
